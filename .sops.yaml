@@ -1,0 +1,12 @@
+keys:
+- &monalisa 111
+- sysadmin-group: &sysadmin
+  - &tristan 111
+  - &berbiche 111
+
+creation_rules:
+- path_regex: secrets/.*$
+  key_groups:
+  - pgp:
+    - *monalisa
+  - pgp: *sysadmin
