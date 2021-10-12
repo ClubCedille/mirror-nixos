@@ -48,6 +48,7 @@
           ./hosts/monalisa/headless.nix
           ./hosts/monalisa/networking.nix
           ./hosts/monalisa/mirror.nix
+          ./modules/mirror.nix
         ];
         specialArgs = {
           inherit (inputs) self;
