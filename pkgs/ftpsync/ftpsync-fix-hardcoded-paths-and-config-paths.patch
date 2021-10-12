@@ -1,0 +1,56 @@
+diff --git a/bin/common b/bin/common
+index 7f3cc50..46b5f3a 100644
+--- a/bin/common
++++ b/bin/common
+@@ -188,7 +188,7 @@ wait_for_pushlocks() {
+ callback () {
+     # Defaults we always want, no matter what
+     SSH_OPTIONS="-o BatchMode=yes -o ServerAliveInterval=45 -o ConnectTimeout=45 -o PasswordAuthentication=no"
+-    ssh -n $SSH_OPTIONS -i "$3" -o"user $1" "$2" callback:${HOSTNAME}
++    @ssh@/bin/ssh -n $SSH_OPTIONS -i "$3" -o"user $1" "$2" callback:${HOSTNAME}
+ }
+ 
+ # open log file
+@@ -415,5 +415,5 @@ EOF
+         cat <<EOF
+ --${boundary}--
+ EOF
+-    ) | /usr/sbin/sendmail -i -- "$@" || :
++    ) | @sendmail@/bin/sendmail -i -- "$@" || :
+ }
+diff --git a/bin/ftpsync b/bin/ftpsync
+index f6881fa..0ada125 100755
+--- a/bin/ftpsync
++++ b/bin/ftpsync
+@@ -33,7 +33,7 @@ set -o pipefail
+ # along with this program; if not, write to the Free Software
+ # Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ 
+-BINDIR=$(dirname $(readlink -f "$0")); . "${BINDIR}/include-git" ## INCLUDE COMMON
++BINDIR=$(dirname $(readlink -f "$0")); ## INCLUDE COMMON
+ 
+ ########################################################################
+ ########################################################################
+@@ -419,7 +419,7 @@ LOCKTIMEOUT=${LOCKTIMEOUT:-3600}
+ UIPSLEEP=${UIPSLEEP:-1200}
+ UIPRETRIES=${UIPRETRIES:-3}
+ TRACEHOST=${TRACEHOST:-$(hostname -f)}
+-RSYNC=${RSYNC:-rsync}
++RSYNC=${RSYNC:-@rsync@/bin/rsync}
+ RSYNC_PROTOCOL=$(rsync_protocol)
+ RSYNC_EXTRA=${RSYNC_EXTRA:-""}
+ RSYNC_BW=${RSYNC_BW:-0}
+diff --git a/bin/include-install b/bin/include-install
+index 79a7dc0..454cf2e 100644
+--- a/bin/include-install
++++ b/bin/include-install
+@@ -1,6 +1,6 @@
+ # -*- mode:sh -*-
+ # vim:syn=sh
+ 
+-CONFDIRS=(~/.config/ftpsync /etc/ftpsync)
+-LOCKDIR=~/.local/lock/ftpsync
+-LOGDIR=~/.local/log/ftpsync
++CONFDIRS=(@ftpsync-conf@ ~/.config/ftpsync /etc/ftpsync)
++LOCKDIR="${LOCKDIR:-@ftpsync-dir@/locks}"
++LOGDIR="${LOGDIR:-@ftpsync-dir@/log}"

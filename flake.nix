@@ -30,6 +30,7 @@
     overlays = {
       our-packages = final: prev: {
         cedille-mirror = prev.callPackage ./pkgs/cedille-mirror { };
+        ftpsync = prev.callPackage ./pkgs/ftpsync { };
       };
     };
 
