@@ -1,23 +1,23 @@
-{ stdenvNoCC
-, lib
-, fetchFromGitLab
-, makeWrapper
-, substituteAll
-# Dependencies used by the shell scripts
-, coreutils
-, gawk
-, gnugrep
-, gnused
-, openssh
-, rsync
-, socat
-, stunnel
-, system-sendmail
-# TODO: find a cleaner way to pass these
-, ftpsync-conf ? "/etc/ftpsync"
-, ftpsync-dir ? "/var/lib/ftpsync"
+{
+  stdenvNoCC,
+  lib,
+  fetchFromGitLab,
+  makeWrapper,
+  substituteAll,
+  # Dependencies used by the shell scripts
+  coreutils,
+  gawk,
+  gnugrep,
+  gnused,
+  openssh,
+  rsync,
+  socat,
+  stunnel,
+  system-sendmail,
+  # TODO: find a cleaner way to pass these
+  ftpsync-conf ? "/etc/ftpsync",
+  ftpsync-dir ? "/var/lib/ftpsync",
 }:
-
 stdenvNoCC.mkDerivation rec {
   pname = "ftpsync";
   version = "20180513";
@@ -30,7 +30,7 @@ stdenvNoCC.mkDerivation rec {
     sha256 = "sha256-P224HQ5MfWAEvndXuDygVhZyGczgByhmfnL9CHYnc6Y=";
   };
 
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [makeWrapper];
 
   # There is no configure script
   dontConfigure = true;
@@ -71,22 +71,22 @@ stdenvNoCC.mkDerivation rec {
   '';
 
   preFixup = ''
-      wrapProgram "$out/bin/ftpsync" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [
-        coreutils
-        gawk
-        gnugrep
-        gnused
-        openssh
-        rsync
-        system-sendmail
-      ])}
-      wrapProgram "$out/bin/rsync-ssl-tunnel" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [
-        coreutils
-        openssh
-        rsync
-        socat # an alternative rsync SSL method (is it really needed?)
-        stunnel # Used as rsync's default SSL method
-      ])}
+    wrapProgram "$out/bin/ftpsync" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [
+      coreutils
+      gawk
+      gnugrep
+      gnused
+      openssh
+      rsync
+      system-sendmail
+    ])}
+    wrapProgram "$out/bin/rsync-ssl-tunnel" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [
+      coreutils
+      openssh
+      rsync
+      socat # an alternative rsync SSL method (is it really needed?)
+      stunnel # Used as rsync's default SSL method
+    ])}
   '';
 
   meta = {

@@ -1,14 +1,16 @@
-{ lib, pkgs, config, ... }:
-
-with lib;
-
-let
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
+with lib; let
   cfg = config.cedille.services.mirrors;
 
   # Systemd services hardening settings
   serviceConfig' = {
-    CapabilityBoundingSet = [ "" ];
-    DeviceAllow = [ "" ];
+    CapabilityBoundingSet = [""];
+    DeviceAllow = [""];
     DynamicUser = true;
     LockPersonality = true;
     MemoryDenyWriteExecute = true;
@@ -25,105 +27,110 @@ let
     ProtectKernelTunables = true;
     ProtectProc = "invisible";
     ProtectSystem = "strict";
-    RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
+    RestrictAddressFamilies = ["AF_INET" "AF_INET6"];
     RestrictNamespaces = true;
     RestrictRealtime = true;
     SystemCallArchitectures = "native";
-    SystemCallFilter = [ "@system-service" "~@privileged" "~@resources" ];
+    SystemCallFilter = ["@system-service" "~@privileged" "~@resources"];
     UMask = "0077";
   };
 
   /*
-    Wrapper around `mkIf` to enable/disable a distribution configuration.
+  Wrapper around `mkIf` to enable/disable a distribution configuration.
 
-    How to use this:
-    ```
-      ifDistroEnabled "debian" (cfg: { something = cfg.mirrorDirectory; })
-    ```
-    The second parameter is a function that returns a Nix module.
-    So the function could return a path, an attribute set or another function
-    that accepts the regular `{ config, lib, pkgs, ... }`.
+  How to use this:
+  ```
+    ifDistroEnabled "debian" (cfg: { something = cfg.mirrorDirectory; })
+  ```
+  The second parameter is a function that returns a Nix module.
+  So the function could return a path, an attribute set or another function
+  that accepts the regular `{ config, lib, pkgs, ... }`.
   */
   ifDistroEnabled = distro: module:
     mkIf cfg.distros."${distro}".enable
-      (if builtins.isFunction module
+    (
+      if builtins.isFunction module
       then (module cfg.distros."${distro}")
-      else module);
+      else module
+    );
 
   /*
-    How to use this:
-    ```
-      mkDistro "my cool Linux distro" {
-        extra-option-1 = mkOption {
-          type = types.str;
-          default = "something";
-        };
-      }
-    ```
+  How to use this:
+  ```
+    mkDistro "my cool Linux distro" {
+      extra-option-1 = mkOption {
+        type = types.str;
+        default = "something";
+      };
+    }
+  ```
   */
-  mkDistro = name: options: {
-    enable = mkEnableOption "${name} mirrors";
+  mkDistro = name: options:
+    {
+      enable = mkEnableOption "${name} mirrors";
 
-    mirrorDirectory = mkOption {
-      type = types.path;
-      example = "/media/mirror/distribution";
-      description = ''
-        The directory where to save the ${name} distribution's files.
-      '';
-    };
+      mirrorDirectory = mkOption {
+        type = types.path;
+        example = "/media/mirror/distribution";
+        description = ''
+          The directory where to save the ${name} distribution's files.
+        '';
+      };
 
-    stateDirectory = mkOption {
-      type = types.path;
-      example = "/var/lib/distribution";
-      description = ''
-        The directory where to save the state and other
-        miscellaneous files for the update scripts of ${name} distribution.
-      '';
-    };
+      stateDirectory = mkOption {
+        type = types.path;
+        example = "/var/lib/distribution";
+        description = ''
+          The directory where to save the state and other
+          miscellaneous files for the update scripts of ${name} distribution.
+        '';
+      };
 
-    configuration = mkOption {
-      type = types.nullOr (types.either (types.lines) (types.attrsOf types.str));
-      default = null;
-      description = ''
-        Content of the configuration file for the updatescripts for the ${name} distribution.
-      '';
-    };
+      configuration = mkOption {
+        type = types.nullOr (types.either (types.lines) (types.attrsOf types.str));
+        default = null;
+        description = ''
+          Content of the configuration file for the updatescripts for the ${name} distribution.
+        '';
+      };
 
-    configurationFile = mkOption {
-      type = types.nullOr types.path;
-      default = null;
-      description = ''
-        File containing the configuration for the update scripts for the ${name} distribution.
-      '';
-    };
-  } // options;
+      configurationFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = ''
+          File containing the configuration for the update scripts for the ${name} distribution.
+        '';
+      };
+    }
+    // options;
 in {
-
   options.cedille.services.mirrors = {
     enable = mkEnableOption "CEDILLE mirrors";
 
-    distros.archlinux = mkDistro "Arch Linux" { };
+    distros.archlinux = mkDistro "Arch Linux" {};
 
-    distros.debian = mkDistro "Debian" { };
+    distros.debian = mkDistro "Debian" {};
 
-    distros.manjaro = mkDistro "Manjaro" { };
+    distros.manjaro = mkDistro "Manjaro" {};
 
-    distros.mint = mkDistro "Linux Mint" { };
+    distros.mint = mkDistro "Linux Mint" {};
 
-    distros.mxlinux = mkDistro "MX Linux" { };
+    distros.mxlinux = mkDistro "MX Linux" {};
 
-    distros.ubuntu = mkDistro "Ubuntu" { };
+    distros.ubuntu = mkDistro "Ubuntu" {};
   };
 
   config = mkIf cfg.enable (mkMerge [
     (ifDistroEnabled "debian" (cfg: {
-      assertions = [{
-        assertion = (cfg.configuration == null) != (cfg.configurationFile == null);
-        message = ''
-          Either the option "configuration" or "configurationFile" must be
-          specified for "cedille.services.mirrors.distros.debian"
-        '';
-      }];
+      assertions = [
+        {
+          assertion = (cfg.configuration == null) != (cfg.configurationFile == null);
+          message = ''
+            Either the option "configuration" or "configurationFile" must be
+            specified for "cedille.services.mirrors.distros.debian"
+          '';
+        }
+      ];
 
       systemd.services.sync-mirror-debian = {
         # 00:17, 04:17, 08:17, 12:17, 16:17 and 20:17 every day
@@ -139,7 +146,7 @@ in {
             if cfg.configurationFile != null
             # This won't work if the file is not named "ftpsync.conf"
             then dirOf cfg.configurationFile
-            else pkgs.writeTextDir "ftpsync.conf" (lib.generators.toKeyValue { } cfg.configuration);
+            else pkgs.writeTextDir "ftpsync.conf" (lib.generators.toKeyValue {} cfg.configuration);
           ftpsync = pkgs.ftpsync.override {
             # Must be a path to the folder containing an ftpsync.conf
             ftpsync-conf = toString config;

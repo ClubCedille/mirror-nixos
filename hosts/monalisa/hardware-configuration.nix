@@ -14,10 +14,10 @@
         "cryptd"
         "dm-raid"
       ];
-      kernelModules = [ ];
-      supportedFilesystems = [ "zfs" ];
+      kernelModules = [];
+      supportedFilesystems = ["zfs"];
     };
-    kernelModules = [ "kvm-intel" ];
+    kernelModules = ["kvm-intel"];
     loader = {
       grub = {
         enable = true;
@@ -33,17 +33,17 @@
         '';
       };
     };
-    supportedFilesystems = [ "zfs" ];
+    supportedFilesystems = ["zfs"];
   };
 
-  fileSystems."/" =
-    { device = "/dev/os/root";
-      fsType = "ext4";
-    };
+  fileSystems."/" = {
+    device = "/dev/os/root";
+    fsType = "ext4";
+  };
 
-  swapDevices =
-    [ { device = "/dev/os/swap"; }
-    ];
+  swapDevices = [
+    {device = "/dev/os/swap";}
+  ];
 
   # Max amount of concurrent jobs the server will use to build Nix stuff.
   # "auto" means to use the number of CPUs of the system.

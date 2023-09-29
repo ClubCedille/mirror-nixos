@@ -1,10 +1,10 @@
-{ stdenv
-, lib
-, fetchFromGitHub
-, makeWrapper
-, rsync
+{
+  stdenv,
+  lib,
+  fetchFromGitHub,
+  makeWrapper,
+  rsync,
 }:
-
 stdenv.mkDerivation {
   pname = "cedille-mirror";
   version = "1.0.0";
@@ -23,7 +23,7 @@ stdenv.mkDerivation {
   dontConfigure = true;
   dontPatch = true;
 
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [makeWrapper];
 
   installPhase = ''
     mkdir -p "$out/share" "$out/bin"
@@ -37,5 +37,5 @@ stdenv.mkDerivation {
       # Let the scripts have `rsync` and themselves in their PATH
       wrapProgram "$script" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [rsync (builtins.placeholder "out")])}
     done
-    '';
+  '';
 }

@@ -1,6 +1,8 @@
-{ lib, pkgs, ... }:
-
 {
+  lib,
+  pkgs,
+  ...
+}: {
   i18n = {
     defaultLocale = "en_US.UTF-8";
   };
@@ -18,7 +20,7 @@
 
   services.openssh = {
     enable = true;
-    ports = [ 22 ];
+    ports = [22];
   };
   # Use sudo with SSH agent
   security.pam.enableSSHAgentAuth = true;

@@ -11,7 +11,11 @@
     sops-nix.inputs.nixpkgs.follows = "nixpkgs-unstable";
   };
 
-  outputs = inputs@{ self, nixpkgs, ... }: let
+  outputs = inputs @ {
+    self,
+    nixpkgs,
+    ...
+  }: let
     inherit (nixpkgs) lib;
 
     monalisa-system = "x86_64-linux";
@@ -19,27 +23,30 @@
     # Utility function from deploy-rs to create a NixOS deployment configuration
     activateNixos = inputs.deploy-rs.lib."${monalisa-system}".activate.nixos;
 
-    pkgs' = system: nixpkgs: import nixpkgs {
-      system = system;
-      overlays = builtins.attrValues self.overlays;
-      config.allowUnfree = false;
-    };
+    pkgs' = system: nixpkgs:
+      import nixpkgs {
+        system = system;
+        overlays = builtins.attrValues self.overlays;
+        config.allowUnfree = false;
+      };
 
-    supportedSystems = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
+    supportedSystems = ["x86_64-linux" "x86_64-darwin" "aarch64-darwin"];
 
     forEachSystem = lib.genAttrs supportedSystems;
   in {
-
     overlays = {
       our-packages = final: prev: {
-        cedille-mirror = prev.callPackage ./pkgs/cedille-mirror { };
-        ftpsync = prev.callPackage ./pkgs/ftpsync { };
+        cedille-mirror = prev.callPackage ./pkgs/cedille-mirror {};
+        ftpsync = prev.callPackage ./pkgs/ftpsync {};
       };
     };
 
-    packages = forEachSystem (x: with (pkgs' x nixpkgs); {
-      inherit cedille-mirror ftpsync;
-    });
+    packages = forEachSystem (x:
+      with (pkgs' x nixpkgs); {
+        inherit cedille-mirror ftpsync;
+      });
+
+    formatter = forEachSystem (system: (pkgs' system nixpkgs).alejandra);
 
     nixosConfigurations = {
       monalisa = lib.nixosSystem {
@@ -62,7 +69,7 @@
     };
 
     deploy.nodes.monalisa-mirror = {
-      sshOpts = [ "-p" "22" ];
+      sshOpts = ["-p" "22"];
       hostname = "mirror.monalisa.cedille.club";
       # Whether the user will upload the locally built config remotely
       # If set to false, the remote machine will download the required
@@ -70,7 +77,7 @@
       # (By default: cache.nixos.org)
       fastConnection = false;
 
-      profilesOrder = [ "system" ];
+      profilesOrder = ["system"];
 
       # Definition of our system configuration for this node
       profiles.system = {
@@ -84,15 +91,15 @@
     devShell = forEachSystem (system: let
       pkgs = pkgs' system inputs.nixpkgs;
       pkgsUnstable = pkgs' system inputs.nixpkgs-unstable;
-    in pkgs.mkShell {
-      name = "mirror-nixos";
-      buildInputs = [
-        inputs.sops-nix.packages.${system}.sops-import-keys-hook
-        inputs.deploy-rs.defaultPackage.${system}
-        pkgs.sops
-        pkgs.nixfmt
-        pkgsUnstable.terraform_1_0
-      ];
-    });
+    in
+      pkgs.mkShell {
+        name = "mirror-nixos";
+        buildInputs = [
+          inputs.sops-nix.packages.${system}.sops-import-keys-hook
+          inputs.deploy-rs.defaultPackage.${system}
+          pkgs.sops
+          pkgsUnstable.terraform_1_0
+        ];
+      });
   };
 }

@@ -1,13 +1,15 @@
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   mirrorVhost = {
     enableACME = true;
     forceSSL = false;
     root = "${pkgs.cedille-mirror}/share/webroot";
   };
-in
-{
+in {
   services.nginx = {
     enable = true;
     recommendedGzipSettings = true;

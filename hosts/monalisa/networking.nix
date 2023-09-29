@@ -1,6 +1,4 @@
-{ lib, ... }:
-
-{
+{lib, ...}: {
   # Override the default network interfaces name that Systemd
   # assigns to the nodes
   systemd.network.links = {
@@ -13,15 +11,17 @@
       linkConfig.Name = "eth1";
     };
   };
-  
+
   # Global network configuration
   networking = {
     useDHCP = false;
     interfaces.eth0.useDHCP = false;
-    interfaces.eth0.ipv4.addresses = [{
-      address= "142.137.247.132";
-      prefixLength = 24;
-    }];
+    interfaces.eth0.ipv4.addresses = [
+      {
+        address = "142.137.247.132";
+        prefixLength = 24;
+      }
+    ];
 
     hostId = "507113d2"; # Randomly generated value
     hostName = "monalisa";
@@ -35,7 +35,7 @@
 
     firewall = {
       interfaces = {
-        eth0.allowedTCPPorts = [ 22 80 443 ];
+        eth0.allowedTCPPorts = [22 80 443];
       };
       logRefusedConnections = true;
       logRefusedUnicastsOnly = true;
