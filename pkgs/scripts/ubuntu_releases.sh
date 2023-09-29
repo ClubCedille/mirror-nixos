@@ -1,10 +1,11 @@
-#!/usr/bin/env bash -e
+#!/usr/bin/env bash
+set -e
 # Mirror Ubuntu releases directory
 
 RSYNCSOURCE=rsync://ca.rsync.releases.ubuntu.com/ubuntu-releases
 BASEDIR=/media/mirror/ubuntu/releases/
 
-@base_path@/base_releases.sh "${RSYNCSOURCE}" "${BASEDIR}" || exit 1
+base_releases.sh "${RSYNCSOURCE}" "${BASEDIR}" || exit 1
 
-host=$(/bin/hostname -f)
+host="$(hostname -f)"
 date -u > "${BASEDIR}/.trace/${host}" || exit 2

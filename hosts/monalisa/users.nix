@@ -29,9 +29,12 @@
   users.users.automation = {
     isSystemUser = true;
     createHome = false;
+    group = "automation";
 
     uid = 900;
 
     #openssh.authorizedKeys.keys = [ "" ];
   };
+
+  users.groups.automation = { };
 }

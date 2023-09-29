@@ -1,6 +1,7 @@
 { stdenv
 , lib
 , fetchFromGitHub
+, makeWrapper
 , rsync
 }:
 
@@ -22,21 +23,19 @@ stdenv.mkDerivation {
   dontConfigure = true;
   dontPatch = true;
 
-  buildInputs = [
-
-  ];
+  nativeBuildInputs = [ makeWrapper ];
 
   installPhase = ''
     mkdir -p "$out/share" "$out/bin"
 
-    cp -r "$src/img" "$src/index.html" "$src/index_en.html" "$out/share"
-    cp "$shellScripts"/*.sh "$out/bin"
-
-    for script in "$out/bin"/*.sh; do
-      chmod +x "$script"
-      substituteInPlace "$script" \
-        --subst-var-by base_path "$out/bin" \
-        --subst-var-by rsync "${rsync}";
-    done
+    cp -rv "$src/img" "$src/index.html" "$src/index_en.html" "$out/share"
+    install -v "$shellScripts"/*.sh "$out/bin"
   '';
+
+  preFixup = ''
+    for script in "$out/bin/"*.sh; do
+      # Let the scripts have `rsync` and themselves in their PATH
+      wrapProgram "$script" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [rsync (builtins.placeholder "out")])}
+    done
+    '';
 }

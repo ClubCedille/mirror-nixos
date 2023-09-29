@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-
+set -e
 # This script should be a cronjob and should be run a few times a day. (example for /etc/crontab: "0  *  *  *  * root /usr/bin/manjaroreposync").
 # However you can also move this script to "/etc/cron.hourly".
 # To be an official Manjaro Linux mirror and to get access to our rsync server, you have to tell us your static ip of your synchronization server.
 
 
 RSYNCSOURCE="@manjaroRsyncSource@"
-RSYNC="@rsync@/bin/rsync"
 LOCKFILE="@lockFile@"
 DESTPATH="@mirrorDirectory@"
 
@@ -18,7 +17,7 @@ DESTPATH="@mirrorDirectory@"
 
 
 synchronize() {
-    $RSYNC -rtlvH --delete-after --delay-updates --safe-links "$RSYNCSOURCE" "$DESTPATH"
+    rsync -rtlvH --delete-after --delay-updates --safe-links "$RSYNCSOURCE" "$DESTPATH"
 }
 
 

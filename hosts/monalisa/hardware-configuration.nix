@@ -1,5 +1,3 @@
-{ config, lib, pkgs, ... }:
-
 {
   boot = {
     initrd = {
@@ -23,7 +21,6 @@
     loader = {
       grub = {
         enable = true;
-        version = 2;
         # One of these 2 SSDs in md raid1
         device = "/dev/disk/by-id/ata-KINGSTON_SV300S37A60G_50026B775B06CEC5";
         #device = "/dev/disk/by-id/ata-KINGSTON_SV300S37A60G_50026B775C03D7BA";
@@ -48,9 +45,8 @@
     [ { device = "/dev/os/swap"; }
     ];
 
-  # Set to the result of `nproc --all`
-  # This is the max amount of concurrent jobs the server will use
-  # to build Nix stuff
-  nix.maxJobs = 8;
+  # Max amount of concurrent jobs the server will use to build Nix stuff.
+  # "auto" means to use the number of CPUs of the system.
+  nix.settings.max-jobs = "auto";
   powerManagement.cpuFreqGovernor = "performance";
 }

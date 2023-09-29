@@ -1,17 +1,24 @@
-{ stdenv
+{ stdenvNoCC
 , lib
 , fetchFromGitLab
 , makeWrapper
 , substituteAll
 # Dependencies used by the shell scripts
-, rsync
-, system-sendmail
+, coreutils
+, gawk
+, gnugrep
+, gnused
 , openssh
+, rsync
+, socat
+, stunnel
+, system-sendmail
+# TODO: find a cleaner way to pass these
 , ftpsync-conf ? "/etc/ftpsync"
 , ftpsync-dir ? "/var/lib/ftpsync"
 }:
 
-stdenv.mkDerivation rec {
+stdenvNoCC.mkDerivation rec {
   pname = "ftpsync";
   version = "20180513";
 
@@ -25,29 +32,30 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [ makeWrapper ];
 
-  # Ignore the Makefile in the project
-  dontBuild = true;
+  # There is no configure script
   dontConfigure = true;
+
+  # It's not going to be in the cache anyway if custom ftpsync-dir or conf are given.
+  preferLocalBuild = true;
+  allowSubstitutes = false;
 
   patches = [
     (substituteAll {
       src = ./ftpsync-fix-hardcoded-paths-and-config-paths.patch;
-      isExecutable = true;
 
-      ftpsync-conf = ftpsync-conf;
-      ftpsync-dir = ftpsync-dir;
-
-      sendmail = system-sendmail;
-      rsync = rsync;
-      ssh = openssh;
+      # Can't use dashes in names here because they need to be valid Bash names
+      ftpsync_conf = ftpsync-conf;
+      ftpsync_dir = ftpsync-dir;
     })
   ];
 
-  postPatch = ''
-    ls -lA bin
+  # Ignore the Makefile in the project, because it assumes git is callable
+  # and it also assumes the installation directory is `/usr/bin`, without any easy way to override it.
+  # This `sed` incantation is taken almost verbatim from the Makefile.
+  buildPhase = ''
     sed -i -r \
-           -e '/## INCLUDE COMMON$$/a {' \
-           -e 'r bin/common'
+           -e '/## INCLUDE COMMON$$/ {' \
+           -e 'r bin/common' \
            -e 'r bin/include-install' \
            -e 'c VERSION="${version}"' \
            -e '};' \
@@ -57,17 +65,31 @@ stdenv.mkDerivation rec {
   installPhase = ''
     mkdir -p "$out/bin" "$out/etc"
 
-    cp -v bin/ftpsync "$out/bin/"
+    # Defaults to rwxr-xr-x
+    install -v bin/ftpsync bin/rsync-ssl-tunnel "$out/bin/"
     cp -v etc/ftpsync.conf.sample "$out/etc/"
-
-    substituteAllInPlace "$out/bin/common" \
-      --subst-var-by "test" "toto"
-
-    #wrapProgram "$out/bin/common"
   '';
 
-  meta = with lib; {
-    homepage = "https://packages.debian.org/stable/ftpsync";
+  preFixup = ''
+      wrapProgram "$out/bin/ftpsync" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [
+        coreutils
+        gawk
+        gnugrep
+        gnused
+        openssh
+        rsync
+        system-sendmail
+      ])}
+      wrapProgram "$out/bin/rsync-ssl-tunnel" --prefix PATH : ${lib.escapeShellArg (lib.makeBinPath [
+        coreutils
+        openssh
+        rsync
+        socat # an alternative rsync SSL method (is it really needed?)
+        stunnel # Used as rsync's default SSL method
+      ])}
+  '';
 
+  meta = {
+    homepage = "https://packages.debian.org/stable/ftpsync";
   };
 }

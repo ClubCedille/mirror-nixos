@@ -1,4 +1,5 @@
-#!/usr/bin/env bash -e
+#!/usr/bin/env bash
+set -e
 # Mirror Archlinux
 
 RSYNCSOURCE=@archRsyncSource@
@@ -16,5 +17,5 @@ if [ ! -d ${BASEDIR} ]; then
   fatal "${BASEDIR} does not exist ! Is the LXC mount ok ?"
 fi
 
-@rsync@/bin/rsync -rtlvH --stats --delete-after --delay-updates --safe-links \
+rsync -rtlvH --stats --delete-after --delay-updates --safe-links \
   "${RSYNCSOURCE}" "${BASEDIR}" || fatal "First stage of sync failed."

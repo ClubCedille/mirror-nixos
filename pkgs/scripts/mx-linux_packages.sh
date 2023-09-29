@@ -1,6 +1,7 @@
-#!/usr/bin/env bash -e
+#!/usr/bin/env bash
+set -e
 
 #RSYNC_PASSWORD="T1tpw4rstmr"
 RSYNC_PASSWORD="$(cat @rsyncPasswordFile@)"
 
-@rsync@/bin/rsync -rtv rsuser@iso.mxrepo.com::workspace /media/mirror/mx-linux/
+rsync -rtv rsuser@iso.mxrepo.com::workspace /media/mirror/mx-linux/

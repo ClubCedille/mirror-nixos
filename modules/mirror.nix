@@ -137,6 +137,7 @@ in {
         script = let
           config =
             if cfg.configurationFile != null
+            # This won't work if the file is not named "ftpsync.conf"
             then dirOf cfg.configurationFile
             else pkgs.writeTextDir "ftpsync.conf" (lib.generators.toKeyValue { } cfg.configuration);
           ftpsync = pkgs.ftpsync.override {
