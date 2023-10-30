@@ -3,9 +3,20 @@
   pkgs,
   config,
   ...
-}:
-with lib; let
+}: let
+  inherit (lib) attrNames concatMap elem isString mkEnableOption mkIf mkMerge mkOption optional types;
+  # TODO: Why is this not `config.services.cedille-mirrors`?
   cfg = config.cedille.services.mirrors;
+
+  # NOTE: if you want to support more distribution types,
+  #       make sure to also support them in mkDistroScript
+  supportedDistroTypes = ["debian" "ubuntu" "arch"];
+
+  # How this should work:
+  # - Some kind of shared options between mirror types
+  # - Type-specific options
+  # How can the specific and shared options be separated?
+  # What about partially shared options?
 
   # Systemd services hardening settings
   serviceConfig' = {
@@ -35,92 +46,268 @@ with lib; let
     UMask = "0077";
   };
 
-  /*
-  Wrapper around `mkIf` to enable/disable a distribution configuration.
+  # TODO: make scripts instead of nothing
+  mkDistroScript = {
+    name,
+    variant,
+  }:
+    assert elem variant ["iso" "packages" "releases"]; let
+      distroType = cfg.distros.${name}.type;
+    in
+      if distroType == "debian"
+      then
+        if variant == "packages"
+        then
+          # FIXME: Add environment variables for settings and config of ftpsync
+          # NOTE: woa, when there's "environment" in a comment above a string, the highlighting gets weird.
+          ''
+            ${pkgs.ftpsync}/bin/ftpsync sync:all
+          ''
+        else if variant == "iso"
+        then throw "TODO"
+        else throw "Unsupported variant '${variant}' for debian-like mirror '${name}'"
+      else if distroType == "ubuntu"
+      then
+        if variant == "packages"
+        then throw "TODO"
+        else if variant == "iso"
+        then throw "TODO"
+        else if variant == "releases"
+        then throw "TODO"
+        else throw "Unsupported variant '${variant}' for ubuntu-like mirror '${name}'"
+      else if distroType == "arch"
+      then
+        if variant == "packages"
+        then throw "TODO"
+        else if variant == "iso"
+        then throw "TODO"
+        else throw "Unsupported variant '${variant}' for arch-like mirror '${name}'"
+      else throw "Support for distro ${name} is not yet implemented. This is a bug and needs to be fixed.";
 
-  How to use this:
-  ```
-    ifDistroEnabled "debian" (cfg: { something = cfg.mirrorDirectory; })
-  ```
-  The second parameter is a function that returns a Nix module.
-  So the function could return a path, an attribute set or another function
-  that accepts the regular `{ config, lib, pkgs, ... }`.
-  */
-  ifDistroEnabled = distro: module:
-    mkIf cfg.distros."${distro}".enable
-    (
-      if builtins.isFunction module
-      then (module cfg.distros."${distro}")
-      else module
-    );
-
-  /*
-  How to use this:
-  ```
-    mkDistro "my cool Linux distro" {
-      extra-option-1 = mkOption {
-        type = types.str;
-        default = "something";
+  # Build the configuration for a single distro from its name
+  mkSystemdDistroConfig = {
+    name,
+    variant ? "packages",
+  }:
+  # Same names in both options and config
+    assert builtins.hasAttr name cfg.distros; {
+      systemd.services."sync-mirror-${name}-${variant}" = {
+        environment = {
+          # Recommended by the upstream Debian ftpsync project
+          # See the README: https://salsa.debian.org/mirror-team/archvsync/
+          # It also seems like a good default for the other mirrors
+          LANG = "POSIX";
+          LC_ALL = "POSIX";
+        };
+        script = mkDistroScript {inherit name variant;};
+        serviceConfig = let
+          mirrorDirectory = cfg.distros.${name}.mirrorDirectory;
+        in
+          serviceConfig'
+          // {
+            AssertPathIsDirectory = mirrorDirectory;
+            AssertPathIsReadWrite = mirrorDirectory;
+            ReadWritePaths = [mirrorDirectory];
+            RequiresMountsFor = mirrorDirectory;
+          };
       };
-    }
-  ```
-  */
-  mkDistro = name: options:
-    {
-      enable = mkEnableOption "${name} mirrors";
-
-      mirrorDirectory = mkOption {
-        type = types.path;
-        example = "/media/mirror/distribution";
-        description = ''
-          The directory where to save the ${name} distribution's files.
-        '';
+      systemd.timers."sync-mirror-${name}" = {
+        # TODO: Test this
+        timerConfig = {
+          # FIXME: what about when the system boots? Do we only rely on the randomDelay?
+          OnUnitActiveSec = cfg.distros.${name}.frequency;
+          RandomDelaySec = cfg.distros.${name}.randomDelay;
+        };
       };
-
-      stateDirectory = mkOption {
-        type = types.path;
-        example = "/var/lib/distribution";
-        description = ''
-          The directory where to save the state and other
-          miscellaneous files for the update scripts of ${name} distribution.
-        '';
+    };
+  mkNginxDistroConfig = name: {
+    nginx.virtualHosts = let
+      value = assert !(lib.hasInfix "/" name); {
+        locations."/${name}/" = {
+          # TODO!: serve the correct director(y|ies)
+        };
       };
-
-      configuration = mkOption {
-        type = types.nullOr (types.either (types.lines) (types.attrsOf types.str));
-        default = null;
-        description = ''
-          Content of the configuration file for the updatescripts for the ${name} distribution.
-        '';
-      };
-
-      configurationFile = mkOption {
-        type = types.nullOr types.path;
-        default = null;
-        description = ''
-          File containing the configuration for the update scripts for the ${name} distribution.
-        '';
-      };
-    }
-    // options;
+    in
+      builtins.listToAttrs (map (name: {inherit name value;}) (
+        if isString cfg.domains
+        then [cfg.domains]
+        else cfg.domains
+      ));
+  };
 in {
   options.cedille.services.mirrors = {
     enable = mkEnableOption "CEDILLE mirrors";
 
-    distros.archlinux = mkDistro "Arch Linux" {};
+    domains = mkOption {
+      type = types.either types.str (types.listOf types.str);
+      example = "example.org";
+      description = ''
+        The domain name(s) used for the nginx virtualHost(s).
+        This can either be a single domain name or a list of domain names.
+      '';
+    };
 
-    distros.debian = mkDistro "Debian" {};
+    distros = mkOption {
+      type = types.attrsOf (types.submodule ({
+        config,
+        name,
+      }: {
+        options = {
+          enable = mkEnableOption "${name} mirrors";
 
-    distros.manjaro = mkDistro "Manjaro" {};
+          configureNginx = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Whether to configure nginx for this mirror.";
+          };
 
-    distros.mint = mkDistro "Linux Mint" {};
+          mirrorDirectory = mkOption {
+            type = types.path;
+            example = "/media/mirror/distribution";
+            description = ''
+              The directory where to save the ${name} distribution's files.
+            '';
+          };
 
-    distros.mxlinux = mkDistro "MX Linux" {};
+          stateDirectory = mkOption {
+            type = types.path;
+            example = "/var/lib/distribution";
+            description = ''
+              The directory where to save the state and other
+              miscellaneous files for the update scripts of ${name} distribution.
+            '';
+          };
 
-    distros.ubuntu = mkDistro "Ubuntu" {};
+          frequency = mkOption {
+            type = types.str;
+            example = "2h 30min";
+            description = lib.mdDoc ''
+              The frequency at which the mirror will fetch updates for the ${name} distribution.
+              The syntax is described in `systemd.time(5)`
+            '';
+          };
+
+          randomDelay = mkOption {
+            type = types.str;
+            default = "1hr";
+            example = "30min";
+            description = lib.mdDoc ''
+              The maximum random delay added between the invocations of the update scripts for the ${name} distribution.
+              The syntax is described in `systemd.time(5)`
+            '';
+          };
+
+          type = mkOption {
+            type = types.enum supportedDistroTypes;
+            description = lib.mdDoc ''
+              The type of the mirror.
+              This affects which script is ran.
+              For example, the "debian" type uses `ftpsync`,
+              while the others use a more custom `rsync` script.
+            '';
+          };
+          # NOTE: assuming (almost) ALL of the config is the same for ISO images
+          iso-images = mkOption {
+            type = types.submodule {
+              options = {
+                enable = mkEnableOption "ISO images mirroring for ${name}";
+              };
+            };
+          };
+
+          # FIXME: what about ISO files? Should these be mirrored too?
+          architectures = mkOption {
+            # TODO: type-check the architectures (but not all distributions call them the same)
+            type = types.listOf types.str;
+            # TODO: add example
+            description = ''
+              The CPU architectures of the mirrored archives.
+              This is specific to each distribution.
+              They don't necessarily all use the same names.
+            '';
+          };
+          upstream = mkOption {
+            type = types.submodule {
+              options = {
+                domain = mkOption {
+                  type = types.str;
+                  description = ''
+                    The domain name of the upstream rsync source that will be mirrored.
+                  '';
+                };
+                path = mkOption {
+                  type = types.str;
+                  # FIXME: What should be the default here?
+                  default = "";
+                  # TODO: should this always end or not end with "/"? Add examples!
+                  description = ''
+                    The remote path mirrored with rsync
+                  '';
+                };
+                user = mkOption {
+                  type = types.str;
+                  default = "";
+                  description = ''
+                    If specified, use this remote user to fetch from rsync.
+                  '';
+                };
+                # For upstreams like MX-Linux
+                passwordFile = mkOption {
+                  type = types.str;
+                  default = "";
+                  # FIXME: which script(s)?
+                  description = ''
+                    If specified, the file containing a password for rsync scripts.
+                    Note that not all distro types use this.
+                    It's mainly intended to be used by our MX-Linux mirror.
+                  '';
+                };
+              };
+            };
+          };
+        };
+      }));
+    };
   };
 
-  config = mkIf cfg.enable (mkMerge [
+  # What needs to be handled for each distribution:
+  # Debian:
+  #   - ftpsync
+  #   - (optionally) ISO images (how?)
+  # Ubuntu, mint:
+  #   - Releases
+  #   - Packages
+  #   - (optionally) ISO images (how?)
+  # Archlinux, manjaro, mxlinux:
+  #   - Packages
+  #   - (optionally) ISO images (how?)
+  config = mkIf cfg.enable (
+    mkMerge (concatMap (
+        name: let
+          conf = cfg.distros.${name};
+        in
+          [
+            (mkSystemdDistroConfig {
+              inherit name;
+              variant = "packages";
+            })
+          ]
+          ++ (optional (conf.iso-images.enable) (mkSystemdDistroConfig {
+            inherit name;
+            variant = "iso";
+          }))
+          ++ (optional (conf.type == "ubuntu") (mkSystemdDistroConfig {
+            inherit name;
+            variant = "releases";
+          }))
+          ++ (optional conf.configureNginx (mkNginxDistroConfig name))
+      )
+      (attrNames cfg.distros))
+  );
+
+  # TODO: delete when all of the frequencies are copied over to the config
+  /*
+  mkIf cfg.enable (mkMerge [
     (ifDistroEnabled "debian" (cfg: {
       assertions = [
         {
@@ -153,7 +340,16 @@ in {
             ftpsync-dir = cfg.stateDirectory;
           };
         in "${ftpsync}/bin/ftpsync sync:all";
-        serviceConfig = serviceConfig';
+        serviceConfig =
+          serviceConfig'
+          //
+          # TODO: add this for other mirrors
+          {
+            AssertPathIsDirectory = cfg.mirrorDirectory;
+            AssertPathIsReadWrite = cfg.mirrorDirectory;
+            ReadWritePaths = [cfg.mirrorDirectory];
+            RequiresMountsFor = cfg.mirrorDirectory;
+          };
       };
     }))
 
@@ -228,4 +424,5 @@ in {
       };
     }))
   ]);
+  */
 }

@@ -1,5 +1,4 @@
 {
-  config,
   lib,
   pkgs,
   ...
@@ -9,6 +8,8 @@
     forceSSL = false;
     root = "${pkgs.cedille-mirror}/share/webroot";
   };
+  domains = ["mirroir.cedille.club" "miroir.cedille.club"];
+  forAllDomains = value: builtins.listToAttrs (map (name: {inherit name value;}) domains);
 in {
   services.nginx = {
     enable = true;
@@ -16,22 +17,22 @@ in {
     recommendedOptimisation = true;
     recommendedProxySettings = true;
     recommendedTlsSettings = true;
-    virtualHosts."mirror.cedille.club" = mirrorVhost;
-    virtualHosts."miroir.cedille.club" = mirrorVhost;
+    virtualHosts = forAllDomains mirrorVhost;
   };
 
   security.acme.acceptTerms = true;
-  security.acme.certs = {
-    "mirror.cedille.club".email = "clubcedille@gmail.com";
-    "miroir.cedille.club".email = "clubcedille@gmail.com";
-  };
+  security.acme.certs = forAllDomains {email = "clubcedille@gmail.com";};
 
   cedille.services.mirrors = {
     enable = true;
+    inherit domains;
     distros.debian = rec {
       enable = true;
       mirrorDirectory = "/media/mirror/debian/packages";
       stateDirectory = "/var/lib/mirror/debian";
+      # Every 4 hours on average
+      frequency = "3hr 30min";
+      randomDelay = "1hr";
       # We need the settings to be within double-quotes
       configuration = lib.mapAttrs (_: v: ''"${v}"'') {
         "ARCH_INCLUDE" = "i386 amd64";

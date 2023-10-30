@@ -95,6 +95,7 @@
       pkgs.mkShell {
         name = "mirror-nixos";
         buildInputs = [
+          pkgs.alejandra
           inputs.sops-nix.packages.${system}.sops-import-keys-hook
           inputs.deploy-rs.defaultPackage.${system}
           pkgs.sops
