@@ -4,7 +4,7 @@
   config,
   ...
 }: let
-  inherit (lib) attrNames concatMap elem isString mkEnableOption mkIf mkMerge mkOption optional types;
+  inherit (lib) attrNames concatMap elem filter isString listToAttrs mkEnableOption mkIf mkMerge mkOption optional toUpper types;
   # TODO: Why is this not `config.services.cedille-mirrors`?
   cfg = config.cedille.services.mirrors;
 
@@ -52,17 +52,39 @@
     variant,
   }:
     assert elem variant ["iso" "packages" "releases"]; let
-      distroType = cfg.distros.${name}.type;
+      distroCfg = cfg.distros.${name};
+      distroType = distroCfg.type;
+      # Attrs of common INFO_* about this mirror
+      info-env-vars =
+        # Names from the `ftpsync` script (and from the info part of the distro config)
+        listToAttrs (filter (env-pair: env-pair.value != "")
+          (map (n: {
+              name = "INFO_" + (toUpper n);
+              value = cfg.info.${n};
+            }) [
+              "maintainer"
+              "sponsor"
+              "country"
+              "location"
+              "throughput"
+            ]));
     in
       if distroType == "debian"
       then
         if variant == "packages"
-        then
-          # FIXME: Add environment variables for settings and config of ftpsync
-          # NOTE: woa, when there's "environment" in a comment above a string, the highlighting gets weird.
-          ''
-            ${pkgs.ftpsync}/bin/ftpsync sync:all
-          ''
+        then {
+          environment =
+            info-env-vars
+            // {
+              RSYNC_HOST = distroCfg.upstream.domain;
+              RSYNC_TRANSPORT = distroCfg.upstream.transport;
+              TO = distroCfg.mirrorDirectory;
+              RSYNC_PATH = distroCfg.upstream.path;
+            };
+          script = ''
+            exec '${pkgs.ftpsync}/bin/ftpsync' sync:all
+          '';
+        }
         else if variant == "iso"
         then throw "TODO"
         else throw "Unsupported variant '${variant}' for debian-like mirror '${name}'"
@@ -99,11 +121,11 @@
           LANG = "POSIX";
           LC_ALL = "POSIX";
         };
-        script = mkDistroScript {inherit name variant;};
         serviceConfig = let
           mirrorDirectory = cfg.distros.${name}.mirrorDirectory;
         in
           serviceConfig'
+          // (mkDistroScript {inherit name variant;})
           // {
             AssertPathIsDirectory = mirrorDirectory;
             AssertPathIsReadWrite = mirrorDirectory;
@@ -122,10 +144,9 @@
     };
   mkNginxDistroConfig = name: {
     nginx.virtualHosts = let
+      distroCfg = cfg.distros.${name};
       value = assert !(lib.hasInfix "/" name); {
-        locations."/${name}/" = {
-          # TODO!: serve the correct director(y|ies)
-        };
+        locations."/${name}/".root = distroCfg.mirrorDirectory;
       };
     in
       builtins.listToAttrs (map (name: {inherit name value;}) (
@@ -147,11 +168,66 @@ in {
       '';
     };
 
+    # TODO: an option for the name of the mirror host
+
+    info = mkOption {
+      description = ''
+        Optional information about the host that will be shown for some mirror types, like `debian`.
+      '';
+      type = types.submodule {
+        options = {
+          maintainer = mkOption {
+            type = types.str;
+            default = "";
+            description = ''
+              Who maintains this mirror? This is useful to let users know who to thank for maintaining this mirror.
+            '';
+          };
+
+          sponsor = mkOption {
+            type = types.str;
+            default = "";
+            description = ''
+              Sponsors usually want others to know they sponsor you.
+              Name them here to include them along with the rest of the informations about this mirror.
+            '';
+          };
+
+          country = mkOption {
+            type = types.str;
+            default = "";
+            description = ''
+              Users usually want the closest mirror to them, so knowing the country in which the servers hosting your mirror are located is very helpful.
+            '';
+          };
+
+          location = mkOption {
+            type = types.str;
+            default = "";
+            description = ''
+              This is a more specific location than the country. For example, if your mirror is hosted in a university, you might want to put the name of the university in here.
+            '';
+          };
+
+          throughput = mkOption {
+            type = types.str;
+            default = "";
+            # TODO: which format for the bandwidth?
+            description = ''
+              The network bandwidth your mirror is capable of serving.
+            '';
+          };
+        };
+      };
+    };
+
     distros = mkOption {
       type = types.attrsOf (types.submodule ({
         config,
         name,
-      }: {
+      }: let
+        distroCfg = cfg.distros.${name};
+      in {
         options = {
           enable = mkEnableOption "${name} mirrors";
 
@@ -178,9 +254,19 @@ in {
             '';
           };
 
+          # NOTE: previously, when this module was first written, it used fixed times of the day.
+          # debian:          00:17, 04:17, 08:17, 12:17, 16:17 and 20:17 every day
+          # mint:            00:20 and 12:20 every day
+          # mint-releases:   22:02 every day
+          # ubuntu:          00:51, 06:51, 12:51 and 18:51 every day
+          # ubuntu-releases: 03:51 every day
+          # archlinux:       00:36, 02:36, 04:36, 06:36, 10:36, 12:36, 14:36, 16:36, 18:36, 20:36 and 22:36 every day
+          # manjaro:         00:43, 04:43, 08:43, 12:43, 16:43 and 20:43 every day
+          # mx-linux:        00:30 and 12:30 every day
+          # FIXME: different frequency for releases
           frequency = mkOption {
             type = types.str;
-            example = "2h 30min";
+            example = "3h 45min";
             description = lib.mdDoc ''
               The frequency at which the mirror will fetch updates for the ${name} distribution.
               The syntax is described in `systemd.time(5)`
@@ -216,6 +302,7 @@ in {
           };
 
           # FIXME: what about ISO files? Should these be mirrored too?
+          # TODO: add include/exclude sub-options
           architectures = mkOption {
             # TODO: type-check the architectures (but not all distributions call them the same)
             type = types.listOf types.str;
@@ -226,9 +313,16 @@ in {
               They don't necessarily all use the same names.
             '';
           };
+
           upstream = mkOption {
             type = types.submodule {
               options = {
+                transport = mkOption {
+                  # TODO: are there other possible transports?
+                  type = types.nullOr (types.enum ["ssh" "ssl"]);
+                  default = null;
+                  description = lib.mdDoc "The transport used by `rsync`";
+                };
                 domain = mkOption {
                   type = types.str;
                   description = ''
@@ -237,11 +331,29 @@ in {
                 };
                 path = mkOption {
                   type = types.str;
-                  # FIXME: What should be the default here?
-                  default = "";
-                  # TODO: should this always end or not end with "/"? Add examples!
+                  default =
+                    if distroCfg.type == "debian"
+                    then "debian"
+                    else "";
+                  # TODO: Add examples! (can this end with "/"?)
                   description = ''
                     The remote path mirrored with rsync
+                  '';
+                };
+                # FIXME: use this at the right places including when actually using:
+                # - rsync over SSL
+                # - rsync over SSH
+                # - Other transport?? (plain rsync?)
+                port = mkOption {
+                  type = types.nullOr types.port;
+                  default =
+                    if distroCfg.upstream.transport == "ssh"
+                    then 22
+                    else if distroCfg.upstream.transport == "ssl"
+                    then 1873
+                    else null;
+                  description = ''
+                    The remote rsync port, using the transport protocol specified elsewhere.
                   '';
                 };
                 user = mkOption {
@@ -255,7 +367,7 @@ in {
                 passwordFile = mkOption {
                   type = types.str;
                   default = "";
-                  # FIXME: which script(s)?
+                  # FIXME: which script(s) are/will be using this?
                   description = ''
                     If specified, the file containing a password for rsync scripts.
                     Note that not all distro types use this.
@@ -304,125 +416,4 @@ in {
       )
       (attrNames cfg.distros))
   );
-
-  # TODO: delete when all of the frequencies are copied over to the config
-  /*
-  mkIf cfg.enable (mkMerge [
-    (ifDistroEnabled "debian" (cfg: {
-      assertions = [
-        {
-          assertion = (cfg.configuration == null) != (cfg.configurationFile == null);
-          message = ''
-            Either the option "configuration" or "configurationFile" must be
-            specified for "cedille.services.mirrors.distros.debian"
-          '';
-        }
-      ];
-
-      systemd.services.sync-mirror-debian = {
-        # 00:17, 04:17, 08:17, 12:17, 16:17 and 20:17 every day
-        startAt = "*-*-* 0/6:17:00";
-        environment = {
-          # Recommended by the upstream Debian ftpsync project
-          # See the README: https://salsa.debian.org/mirror-team/archvsync/
-          LANG = "POSIX";
-          LC_ALL = "POSIX";
-        };
-        script = let
-          config =
-            if cfg.configurationFile != null
-            # This won't work if the file is not named "ftpsync.conf"
-            then dirOf cfg.configurationFile
-            else pkgs.writeTextDir "ftpsync.conf" (lib.generators.toKeyValue {} cfg.configuration);
-          ftpsync = pkgs.ftpsync.override {
-            # Must be a path to the folder containing an ftpsync.conf
-            ftpsync-conf = toString config;
-            ftpsync-dir = cfg.stateDirectory;
-          };
-        in "${ftpsync}/bin/ftpsync sync:all";
-        serviceConfig =
-          serviceConfig'
-          //
-          # TODO: add this for other mirrors
-          {
-            AssertPathIsDirectory = cfg.mirrorDirectory;
-            AssertPathIsReadWrite = cfg.mirrorDirectory;
-            ReadWritePaths = [cfg.mirrorDirectory];
-            RequiresMountsFor = cfg.mirrorDirectory;
-          };
-      };
-    }))
-
-    (ifDistroEnabled "mint" (cfg: {
-      systemd.services.sync-mirror-linux-mint-packages = {
-        # 00:20 and 12:20 every day
-        startAt = "*-*-* 0/12:20:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/mint_packages.sh";
-        serviceConfig = serviceConfig';
-      };
-      systemd.services.sync-mirror-linux-mint-releases = {
-        # 22:02 every day
-        startAt = "*-*-* 22:02:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/mint_releases.sh";
-        serviceConfig = serviceConfig';
-      };
-    }))
-
-    (ifDistroEnabled "ubuntu" (cfg: {
-      systemd.services.sync-mirror-ubuntu-packages = {
-        # 00:51, 06:51, 12:51 and 18:51 every day
-        startAt = "*-*-* 0/4:51:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/ubuntu_packages.sh";
-        serviceConfig = serviceConfig';
-      };
-      systemd.services.sync-mirror-ubuntu-releases = {
-        # 03:51 every day
-        startAt = "*-*-* 3:51:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/ubuntu_releases.sh";
-        serviceConfig = serviceConfig';
-      };
-    }))
-
-    (ifDistroEnabled "archlinux" (cfg: {
-      systemd.services.sync-mirror-arch = {
-        # 00:36, 02:36, 04:36, 06:36, 10:36, 12:36, 14:36, 16:36, 18:36, 20:36 and 22:36 every day
-        startAt = "*-*-* 0/2:36:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/arch.sh";
-        serviceConfig = serviceConfig';
-      };
-    }))
-
-    (ifDistroEnabled "manjaro" (cfg: {
-      systemd.services.sync-mirror-manjaro = {
-        # 00:43, 04:43, 08:43, 12:43, 16:43 and 20:43 every day
-        startAt = "*-*-* 0/6:43:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/manjaroreposync.sh";
-        serviceConfig = serviceConfig';
-      };
-    }))
-
-    (ifDistroEnabled "mxlinux" (cfg: {
-      systemd.services.sync-mirror-mx-linux = {
-        # 00:30 and 12:30 every day
-        startAt = "*-*-* 0/12:30:00";
-        environment = {
-        };
-        script = "${pkgs.cedille-mirror}/bin/mx-linux_packages.sh";
-        serviceConfig = serviceConfig';
-      };
-    }))
-  ]);
-  */
 }
